@@ -120,11 +120,37 @@ func requireLogin(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+func addWorkoutHandler(w http.ResponseWriter, r *http.Request) {
+	var workout Workout
+	if err := json.NewDecoder(r.Body).Decode(&workout); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	session, _ := store.Get(r, "session")
+
+	
+	var userID int
+	err := db.QueryRow("SELECT id FROM users WHERE username = ?", session.Values["user"].(string)).Scan(&userID)
+	if err != nil {
+		http.Error(w, "Error fetching user ID", http.StatusInternalServerError)
+		return
+	}
+
+	_, err = db.Exec("INSERT INTO workouts(user_id, date, duration, intensity) VALUES(?, ?, ?, ?)", userID, workout.Date, workout.Duration, workout.Intensity)
+	if err != nil {
+		http.Error(w, "Error adding workout", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
+}
+
 func getWorkoutsHandler(w http.ResponseWriter, r *http.Request) {
 	session, _ := store.Get(r, "session")
-	username := session.Values["user"].(string)
+	user := session.Values["user"].(string) 
 
-	rows, err := db.Query("SELECT id, user_id, date, duration, intensity FROM workouts WHERE username = ?", username)
+	rows, err := db.Query("SELECT id, user_id, date, duration, intensity FROM workouts WHERE username = ?", user)
 	if err != nil {
 		http.Error(w, "Error fetching workouts", http.StatusInternalServerError)
 		return
@@ -143,23 +169,4 @@ func getWorkoutsHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(workouts)
-}
-
-func addWorkoutHandler(w http.ResponseWriter, r *http.Request) {
-	var workout Workout
-	if err := json.NewDecoder(r.Body).Decode(&workout); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	session, _ := store.Get(r, "session")
-	username := session.Values["user"].(string)
-
-	_, err := db.Exec("INSERT INTO workouts(user_id, date, duration, intensity) VALUES(?, ?, ?, ?)", workout.UserID, workout.Date, workout.Duration, workout.Intensity)
-	if err != nil {
-		http.Error(w, "Error adding workout", http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusCreated)
 }
